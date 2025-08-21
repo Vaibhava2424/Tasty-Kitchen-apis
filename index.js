@@ -1,13 +1,8 @@
 // index.js
-
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const { sign, verify } = jwt;
 
@@ -15,46 +10,43 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("MongoDB connected successfully");
-  })
-  .catch((err) => {
-    console.error("MongoDB connection error:", err);
-    process.exit(1);
-  });
+// MongoDB connection
+mongoose.connect("mongodb://127.0.0.1:27017/tasty-kitchen");
 
 const db = mongoose.connection;
 
-// Removed all Mongoose schemas and models, as requested.
-// We will now use the native MongoDB driver methods directly on the `db` object.
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+});
+const User = mongoose.model("User", userSchema);
 
-// ======================= Products CRUD =======================
+// ======================= Products CRUD with schema =======================
 
-// Create multiple products
+//  Create multiple products
 app.post("/products", async (req, res) => {
   try {
-    const productsArray = req.body;
+    const productsArray = req.body; // now an array of product objects
     if (!Array.isArray(productsArray) || productsArray.length === 0) {
       return res.status(400).json({ error: "Request body must be an array of products" });
     }
-    // Using the native MongoDB driver's insertMany method
+
     const result = await db.collection("products").insertMany(productsArray);
-    res.status(201).json({ 
-      message: "Products added successfully", 
+
+    res.status(201).json({
+      message: "Products added successfully",
       insertedCount: result.insertedCount,
-      insertedIds: result.insertedIds
+      insertedIds: result.insertedIds,
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to add products", details: err.message });
   }
 });
 
-// Get All Products
+//  Get All Products
 app.get("/products", async (req, res) => {
   try {
-    // Using the native MongoDB driver's find method
     const products = await db.collection("products").find().toArray();
     res.json(products);
   } catch (err) {
@@ -64,28 +56,28 @@ app.get("/products", async (req, res) => {
 
 // Get a single product by ID
 app.get("/products/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { ObjectId } = mongoose.Types;
+  try {
+    const { id } = req.params;
+    const { ObjectId } = mongoose.Types;
 
-        if (!ObjectId.isValid(id)) {
-            return res.status(400).json({ error: "Invalid product ID" });
-        }
-
-        // Using native findOne with ObjectId
-        const product = await db.collection("products").findOne({ _id: new ObjectId(id) });
-
-        if (!product) {
-            return res.status(404).json({ error: "Product not found" });
-        }
-
-        res.json(product);
-    } catch (err) {
-        res.status(500).json({ error: "Failed to fetch product", details: err.message });
+    // Check if the ID is a valid MongoDB ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid product ID" });
     }
+
+    const product = await db.collection("products").findOne({ _id: new ObjectId(id) });
+
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    res.json(product);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch product", details: err.message });
+  }
 });
 
-// Update Product
+// ➡️ Update Product
 app.put("/products/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -101,13 +93,13 @@ app.put("/products/:id", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    res.json({ message: "Product updated", updatedProduct: result });
+    res.json({ message: "Product updated" });
   } catch (err) {
     res.status(500).json({ error: "Failed to update product", details: err.message });
   }
 });
 
-// Delete Product
+// ➡️ Delete Product
 app.delete("/products/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -125,7 +117,7 @@ app.delete("/products/:id", async (req, res) => {
   }
 });
 
-// Delete all products
+// Add this route to your backend code
 app.delete("/products/all", async (req, res) => {
   try {
     const result = await db.collection("products").deleteMany({});
@@ -138,16 +130,80 @@ app.delete("/products/all", async (req, res) => {
   }
 });
 
-// ======================= Offers CRUD =======================
+// ============================================================================
+
+//  Signup route
+app.post("/signup", async (req, res) => {
+  const { username, password, email } = req.body;
+
+  try {
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    const newUser = new User({ username, password, email });
+    await newUser.save();
+
+    res.json({ message: "Signup successful" });
+  } catch (err) {
+    res.status(500).json({ error: "Something went wrong", details: err.message });
+  }
+});
+
+app.get("/all", async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: "Something went wrong", details: err.message });
+  }
+});
+
+//  Login route
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const user = await User.findOne({ username, password });
+    if (!user) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
+    const token = sign({ id: user._id }, "secretKey", { expiresIn: "30d" });
+    res.json({ message: "Login successful", token });
+  } catch (err) {
+    res.status(500).json({ error: "Something went wrong", details: err.message });
+  }
+});
+
+//  Protected route
+app.get("/protected", (req, res) => {
+  const token = req.headers["authorization"];
+  if (!token) {
+    return res.status(403).json({ error: "Token missing" });
+  }
+
+  try {
+    const decoded = verify(token, "secretKey");
+    res.json({ message: "Protected data", userId: decoded.id });
+  } catch (err) {
+    res.status(401).json({ error: "Invalid token" });
+  }
+});
+
+// ======================= Offers CRUD without schema =======================
 
 // Create multiple offers
 app.post("/offers", async (req, res) => {
   try {
-    const offersArray = req.body;
+    const offersArray = req.body; // Expecting an array of offers
     if (!Array.isArray(offersArray) || offersArray.length === 0) {
       return res.status(400).json({ error: "Request body must be an array of offers" });
     }
+
     const result = await db.collection("offers").insertMany(offersArray);
+
     res.status(201).json({
       message: "Offers added successfully",
       insertedCount: result.insertedCount,
@@ -206,7 +262,7 @@ app.put("/offers/:id", async (req, res) => {
       return res.status(404).json({ error: "Offer not found" });
     }
 
-    res.json({ message: "Offer updated", updatedOffer: result });
+    res.json({ message: "Offer updated" });
   } catch (err) {
     res.status(500).json({ error: "Failed to update offer", details: err.message });
   }
@@ -230,82 +286,7 @@ app.delete("/offers/:id", async (req, res) => {
   }
 });
 
-// User schema with a secure password field
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-});
-const User = mongoose.model("User", userSchema);
-
-// Signup route with password hashing
-app.post("/signup", async (req, res) => {
-  const { username, password, email } = req.body;
-  try {
-    const existingUser = await User.findOne({ username });
-    if (existingUser) {
-      return res.status(400).json({ error: "User already exists" });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ username, password: hashedPassword, email });
-    await newUser.save();
-    res.json({ message: "Signup successful" });
-  } catch (err) {
-    res.status(500).json({ error: "Something went wrong", details: err.message });
-  }
-});
-
-// Get all users
-app.get("/all", async (req, res) => {
-  try {
-    const users = await User.find();
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ error: "Something went wrong", details: err.message });
-  }
-});
-
-// Login route with password comparison
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
-    const token = sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" }
-    );
-    res.json({ message: "Login successful", token });
-  } catch (err) {
-    res.status(500).json({ error: "Something went wrong", details: err.message });
-  }
-});
-
-// Protected route with JWT verification
-app.get("/protected", (req, res) => {
-  const authHeader = req.headers["authorization"];
-  if (!authHeader) {
-    return res.status(403).json({ error: "Token missing" });
-  }
-  const token = authHeader.split(" ")[1];
-  if (!token) {
-    return res.status(403).json({ error: "Token missing or malformed" });
-  }
-  try {
-    const decoded = verify(token, process.env.JWT_SECRET);
-    res.json({ message: "Protected data", userId: decoded.id });
-  } catch (err) {
-    res.status(401).json({ error: "Invalid token" });
-  }
-});
-
+// Start server
 // Start server using the dynamic port from Render or default to 5000
 const port = process.env.PORT || 5000;
 app.listen(port, () => {
