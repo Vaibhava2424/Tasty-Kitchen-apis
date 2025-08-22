@@ -10,10 +10,19 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// MongoDB connection
-mongoose.connect("mongodb://127.0.0.1:27017/tasty-kitchen");
+// ===================== DATABASE CONNECTION =====================
+// ⚠️ CORRECTED: Using MONGO_URI environment variable for deployment.
+// This variable must be set in your Render dashboard settings.
+mongoose.connect(process.env.MONGO_URI);
 
 const db = mongoose.connection;
+db.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
+});
+db.once('open', () => {
+  console.log('Connected to MongoDB Atlas successfully.');
+});
+// ===============================================================
 
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
@@ -24,7 +33,7 @@ const User = mongoose.model("User", userSchema);
 
 // ======================= Products CRUD with schema =======================
 
-//  Create multiple products
+// Create multiple products
 app.post("/products", async (req, res) => {
   try {
     const productsArray = req.body; // now an array of product objects
@@ -44,7 +53,7 @@ app.post("/products", async (req, res) => {
   }
 });
 
-//  Get All Products
+// Get All Products
 app.get("/products", async (req, res) => {
   try {
     const products = await db.collection("products").find().toArray();
@@ -132,7 +141,7 @@ app.delete("/products/all", async (req, res) => {
 
 // ============================================================================
 
-//  Signup route
+// Signup route
 app.post("/signup", async (req, res) => {
   const { username, password, email } = req.body;
 
@@ -160,7 +169,7 @@ app.get("/all", async (req, res) => {
   }
 });
 
-//  Login route
+// Login route
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
@@ -170,14 +179,15 @@ app.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    const token = sign({ id: user._id }, "secretKey", { expiresIn: "30d" });
+    // ⚠️ CORRECTED: Using JWT_SECRET environment variable for security.
+    const token = sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
     res.json({ message: "Login successful", token });
   } catch (err) {
     res.status(500).json({ error: "Something went wrong", details: err.message });
   }
 });
 
-//  Protected route
+// Protected route
 app.get("/protected", (req, res) => {
   const token = req.headers["authorization"];
   if (!token) {
@@ -185,7 +195,8 @@ app.get("/protected", (req, res) => {
   }
 
   try {
-    const decoded = verify(token, "secretKey");
+    // ⚠️ CORRECTED: Using JWT_SECRET environment variable for verification.
+    const decoded = verify(token, process.env.JWT_SECRET);
     res.json({ message: "Protected data", userId: decoded.id });
   } catch (err) {
     res.status(401).json({ error: "Invalid token" });
