@@ -305,6 +305,105 @@ app.delete("/offers/:id", async (req, res) => {
   }
 });
 
+// ===================== FEEDBACK ROUTES =====================
+
+// CREATE feedback (POST)
+app.post("/feedback", async (req, res) => {
+  try {
+    const { username, message, ...rest } = req.body;
+
+    if (!username || !message) {
+      return res.status(400).json({ error: "Username and message are required" });
+    }
+
+    const feedbackDoc = {
+      username,
+      message,
+      ...rest,
+      createdAt: new Date(),
+    };
+
+    const result = await db.collection("feedback").insertOne(feedbackDoc);
+
+    res.status(201).json({
+      message: "Feedback submitted successfully",
+      insertedId: result.insertedId,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to submit feedback", details: err.message });
+  }
+});
+
+
+// READ all feedback (GET)
+app.get("/feedback", async (req, res) => {
+  try {
+    const feedbacks = await db.collection("feedback").find().toArray();
+    res.json(feedbacks);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch feedback", details: err.message });
+  }
+});
+
+// READ single feedback by ID (GET)
+import { ObjectId } from "mongodb";
+
+app.get("/feedback/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const feedback = await db.collection("feedback").findOne({ _id: new ObjectId(id) });
+
+    if (!feedback) {
+      return res.status(404).json({ error: "Feedback not found" });
+    }
+
+    res.json(feedback);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch feedback", details: err.message });
+  }
+});
+
+
+// UPDATE feedback by ID (PUT)
+app.put("/feedback/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const result = await db.collection("feedback").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { ...updates, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Feedback not found" });
+    }
+
+    res.json({ message: "Feedback updated successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update feedback", details: err.message });
+  }
+});
+
+
+// DELETE feedback by ID (DELETE)
+app.delete("/feedback/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.collection("feedback").deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: "Feedback not found" });
+    }
+
+    res.json({ message: "Feedback deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete feedback", details: err.message });
+  }
+});
+
+
+
 // Start server
 // Start server using the dynamic port from Render or default to 5000
 const port = process.env.PORT || 5000;
