@@ -3,6 +3,14 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+import { EventEmitter } from "events";
+
+
+EventEmitter.setMaxListeners(20); // set a higher limit globally
+
+
+dotenv.config();
 
 const { sign, verify } = jwt;
 
